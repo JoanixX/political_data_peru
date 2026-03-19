@@ -1,4 +1,93 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.tox/
+.nox/
+.ipynb_checkpoints/
+
+# Data (no se suben los datos locales)
+data/raw/*
+!data/raw/.gitkeep
+data/staging/*
+!data/staging/.gitkeep
+data/normalized/*
+!data/normalized/.gitkeep
+data/matched/*
+!data/matched/*
+!data/curated/*
+!data/curated/.gitkeep
+data/exports/*
+!data/exports/.gitkeep
+
+# temps
+*.csv
+*.parquet
+*.jsonl
+*.db
+*.sqlite
+*.sql
+*.zip
+*.tar.gz
+
+# notebooks ipynb
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+# solo subir notebooks limpios
+# *.ipynb (opcional)
+
+# secretos
 .env
 .env.local
 .env.production
 .env.*.local
+*.secret
+*.pem
+*.key
+
+# dicker
+.docker/
+# docker-compose.override.yml (opcional si se usa)
+
+# IDEs y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# virtual envs
+.venv/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# logs
+*.log
+logs/
+temp/
+tmp/
