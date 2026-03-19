@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Datos de Políticos y Senadores - Smoke Test</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --secondary: #34495e;
+            --accent: #e74c3c;
+            --bg: #f4f7f6;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 20px;
+            color: var(--primary);
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 { color: var(--accent); border-bottom: 2px solid var(--bg); padding-bottom: 10px; }
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+            background: #2ecc71;
+            color: white;
+        }
+        .data-preview {
+            margin-top: 20px;
+            padding: 15px;
+            background: #282c34;
+            color: #abb2bf;
+            border-radius: 5px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Datos de Políticos y Senadores</h1>
+        <p><strong>Estado del Sistema:</strong> <span class="status-badge">Operational</span></p>
+        <p>Este frontend es un <em>smoke test</em> para validar la integridad del pipeline de datos y la exposición básica de entidades.</p>
+        
+        <h3>Previsualización de Entidad (Candidato)</h3>
+        <div class="data-preview">
+{
+    "dni": "12345678",
+    "nombre_completo": "JUAN PEREZ ALVA",
+    "partido": "PARTIDO DE PRUEBA",
+    "cargo": "PRESIDENTE",
+    "fuente": "JNE - Plataforma Electoral",
+    "ultima_actualizacion": "2026-03-19"
+}
+        </div>
+
+        <p><small>Nota: Los datos reales se sirven mediante la API de procesamiento.</small></p>
+    </div>
+</body>
+</html>
