@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: political_db
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+      POSTGRES_DB: ${DB_NAME:-political_db}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  pipeline:
+    build: .
+    container_name: political_pipeline
+    depends_on:
+      - db
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    command: python -m src.main
+
+volumes:
+  postgres_data:

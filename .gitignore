@@ -31,18 +31,12 @@ htmlcov/
 # Data (no se suben los datos locales)
 data/raw/*
 !data/raw/.gitkeep
-data/staging/*
-!data/staging/.gitkeep
-data/normalized/*
-!data/normalized/.gitkeep
-data/matched/*
-!data/matched/*
-!data/curated/*
-!data/curated/.gitkeep
-data/exports/*
-!data/exports/.gitkeep
+data/interim/*
+!data/interim/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
 
-# temps
+# Extensiones de archivos de datos pesados
 *.csv
 *.parquet
 *.jsonl
@@ -51,6 +45,7 @@ data/exports/*
 *.sql
 *.zip
 *.tar.gz
+*.7z
 
 # notebooks ipynb
 .ipynb_checkpoints
@@ -66,6 +61,7 @@ data/exports/*
 *.secret
 *.pem
 *.key
+credentials/
 
 # dicker
 .docker/
@@ -78,6 +74,8 @@ data/exports/*
 Thumbs.db
 *.swp
 *.swo
+*.tmp
+*~
 
 # virtual envs
 .venv/
@@ -91,3 +89,5 @@ venv.bak/
 logs/
 temp/
 tmp/
+reports/figures/
+reports/html/
