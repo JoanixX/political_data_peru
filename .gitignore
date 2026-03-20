@@ -91,3 +91,6 @@ temp/
 tmp/
 reports/figures/
 reports/html/
+
+# docs
+Instrucciones.md
