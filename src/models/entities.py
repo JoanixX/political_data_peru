@@ -54,6 +54,7 @@ class JNEDatosPersonales(BaseModel):
     partido: str = Field(..., alias="strOrganizacionPolitica")
     cargo_postula: Optional[str] = Field(None, alias="strCargoEleccion")
 
+# se actualizó para que se pueda usar también en el caso de candidatos a parlamento
 class JNEHojaVidaConsolidada(BaseModel):
     datos_personales: JNEDatosPersonales = Field(..., alias="oDatosPersonales")
     experiencia_laboral: List[JNEExperienciaLaboral] = Field(default_factory=list, alias="lExperienciaLaboral")
@@ -62,6 +63,41 @@ class JNEHojaVidaConsolidada(BaseModel):
     bienes_inmuebles: List[JNEBienInmueble] = Field(default_factory=list, alias="lBienInmueble")
     bienes_muebles: List[JNEBienMueble] = Field(default_factory=list, alias="lBienMueble")
     titularidades: List[JNETitularidad] = Field(default_factory=list, alias="lTitularidad")
+    anotaciones_marginales: List[Dict[str, Any]] = Field(default_factory=list, alias="lAnotacionMarginal")
+    educacion_basica: Optional[Dict[str, Any]] = Field(None, alias="oEduBasica")
+    educacion_tecnica: Optional[Dict[str, Any]] = Field(None, alias="oEduTecnico")
+    posgrados: List[Dict[str, Any]] = Field(default_factory=list, alias="lEduPosgrado")
+    cargos_partidarios: List[Dict[str, Any]] = Field(default_factory=list, alias="lCargoPartidario")
+    renuncias_op: List[Dict[str, Any]] = Field(default_factory=list, alias="lRenunciaOP")
+    sentencias_penales: List[Dict[str, Any]] = Field(default_factory=list, alias="lSentenciaPenal")
+    sentencias_obligacion: List[Dict[str, Any]] = Field(default_factory=list, alias="lSentenciaObliga")
+
+class JNECandidatoLista(BaseModel):
+    id_proceso_electoral: Optional[int] = Field(None, alias="idProcesoElectoral")
+    id_tipo_eleccion: Optional[int] = Field(None, alias="idTipoEleccion")
+    id_organizacion_politica: Optional[int] = Field(None, alias="idOrganizacionPolitica")
+    organizacion_politica: Optional[str] = Field(None, alias="strOrganizacionPolitica")
+    id_cargo: Optional[int] = Field(None, alias="idCargo")
+    cargo: Optional[str] = Field(None, alias="strCargo")
+    dni: Optional[str] = Field(None, alias="strDocumentoIdentidad")
+    nombres: Optional[str] = Field(None, alias="strNombres")
+    apellido_paterno: Optional[str] = Field(None, alias="strApellidoPaterno")
+    apellido_materno: Optional[str] = Field(None, alias="strApellidoMaterno")
+    sexo: Optional[str] = Field(None, alias="strSexo")
+    estado_candidato: Optional[str] = Field(None, alias="strEstadoCandidato")
+
+class JNEPlanGobierno(BaseModel):
+    id_plan_gobierno: Optional[int] = Field(None, alias="idPlanGobierno")
+    id_organizacion_politica: Optional[int] = Field(None, alias="idOrganizacionPolitica")
+    organizacion_politica: Optional[str] = Field(None, alias="txOrganizacionPolitica")
+    ruta_pdf: Optional[str] = Field(None, alias="txRutaResumen")
+
+class JNEAnotacionMarginal(BaseModel):
+    id_anotacion: Optional[int] = Field(None, alias="idAnotacionMarginal")
+    dice: Optional[str] = Field(None, alias="strDice")
+    debe_decir: Optional[str] = Field(None, alias="strDebeDecir")
+    expediente: Optional[str] = Field(None, alias="strI_Expediente")
+    ruta_anotacion: Optional[str] = Field(None, alias="strI_Ruta")
 
 class JNEResponse(BaseModel):
     success: bool
