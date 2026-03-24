@@ -48,4 +48,4 @@ El entorno esta totalmente dockerizado para garantizar la reproducibilidad inmed
 
 ---
 
-_Este proyecto esta diseñado con altos estándares de ingeniería de datos para garantizar la veracidad, trazabilidad y utilidad de la información política en Perú. Con cariño, yo._
+_Proyecto diseñado con estándares de ingeniería de datos para garantizar la veracidad, trazabilidad y utilidad de la información política en Perú._
