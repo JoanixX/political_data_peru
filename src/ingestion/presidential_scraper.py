@@ -25,11 +25,8 @@ class PresidentialScraper(BaseScraper):
         }
         logger.info(f"Obteniendo lista de candidatos para Proceso {payload['idProcesoElectoral']}...")
         
-        # usamos el httpx para el post porque el basescraper es solo get
-        response = await self.client.post(self.list_url, json=payload, 
-                                        headers=self.headers)
-        response.raise_for_status()
-        data = response.json()
+        # usamos el metodo heredado post_data con reintentos
+        data = await self.post_data(self.list_url, payload)
         return data.get("data", [])
 
     async def download_candidate_data(self, id_hoja_vida: int, semaphore: asyncio.Semaphore):
