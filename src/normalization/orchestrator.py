@@ -1,6 +1,8 @@
 import polars as pl
 from pathlib import Path
 from src.utils.logger import get_logger
+import src.normalization.cleaners as cleaners
+from src.validation.schemas import DataFramework
 
 logger = get_logger(__name__)
 
@@ -50,9 +52,9 @@ def standardize_single_file(path: str, category_name: str) -> pl.LazyFrame:
     # calcula ingresos totales combinando sector publico y privado
     ingresos = []
     if "decRemuBrutaPublico" in cols:
-        ingresos.append(pl.col("decRemuBrutaPublico").cast(pl.Float64, strict=False).fill_null(0.0))
+        ingresos.append(cleaners.clean_financial_column("decRemuBrutaPublico"))
     if "decRemuBrutaPrivado" in cols:
-        ingresos.append(pl.col("decRemuBrutaPrivado").cast(pl.Float64, strict=False).fill_null(0.0))
+        ingresos.append(cleaners.clean_financial_column("decRemuBrutaPrivado"))
         
     if ingresos:
         exprs.append(pl.sum_horizontal(ingresos).alias("ingresos_totales"))
@@ -70,18 +72,17 @@ def run_silver_orchestration():
     raw_dir = Path("data/raw")
     output_dir = Path("data/normalized")
     output_dir.mkdir(parents=True, exist_ok=True)
+    
     categories = ["presidentes", "parlamento_andino", "senadores", "diputados"]
     lfs_to_concat = []
     
     for category in categories:
         category_path = raw_dir / category
         if not category_path.exists():
-            logger.warning(f"La ruta {category_path} no existe. Saltando categoría.")
             continue
             
         json_files = list(category_path.rglob("*.json"))
         if not json_files:
-            logger.info(f"No hay archivos en {category_path}")
             continue
             
         logger.info(f"Procesando {len(json_files)} archivo(s) para {category}...")
@@ -94,37 +95,31 @@ def run_silver_orchestration():
         return
         
     logger.info("Generando plan de ejecución para unificar todos los lotes...")
-    
-    # concatena todos
     silver_lf = pl.concat(lfs_to_concat, how="vertical")
     
     # limpiezas globales sobre las columnas ya estandarizadas
     silver_lf = silver_lf.with_columns([
-        pl.col("dni").fill_null("").str.zfill(8),
-        pl.col("nombres").str.to_uppercase().str.strip_chars(),
-        pl.col("cargo").str.to_uppercase().str.strip_chars(),
-        pl.col("partido").str.to_uppercase().str.strip_chars()
+        cleaners.normalize_identity("dni").alias("dni"),
+        cleaners.standardize_text("nombres", casing="title").alias("nombres"),
+        cleaners.standardize_text("cargo", casing="title").alias("cargo"),
+        cleaners.standardize_text("partido", casing="title").alias("partido")
     ])
     
-    output_path = output_dir / "candidatos_silver.parquet"
-    logger.info(f"volcando datos a {output_path} utilizando streaming con zstd...")
+    # fuerza resolucion para filtrar calidad
+    logger.info("Ejecutando plan y validando calidad de registros (circuit breaker)...")
+    silver_df = silver_lf.collect()
     
-    try:
-        # procesa por lotes y comprime con zstd
-        silver_lf.sink_parquet(
-            str(output_path),
-            compression="zstd"
-        )
-        logger.info("Orquestacion a capa silver completada exitosamente.")
-    except Exception as e:
-        logger.error(f"Error durante la persistencia perezosa: {e}")
-        # fallback si sink_parquet no soporta una operacion
-        logger.info("Intentando persistencia forzada en memoria...")
-        silver_lf.collect().write_parquet(
-            str(output_path),
-            compression="zstd"
-        )
-        logger.info("Persistencia forzada completada exitosamente.")
+    validator = DataFramework()
+    valid_df = validator.validate_silver_records(silver_df)
+    
+    output_path = output_dir / "candidatos_silver.parquet"
+    logger.info(f"Volcando datos limpios y filtrados a {output_path} (zstd)...")
+    
+    valid_df.write_parquet(
+        str(output_path),
+        compression="zstd"
+    )
+    logger.info("Orquestación y limpieza completada exitosamente.")
 
 if __name__ == "__main__":
     run_silver_orchestration()
