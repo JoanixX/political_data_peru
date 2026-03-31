@@ -3,6 +3,7 @@ from pathlib import Path
 from src.utils.logger import get_logger
 import src.normalization.cleaners as cleaners
 from src.validation.schemas import DataFramework
+from src.normalization.standards import apply_global_id
 
 logger = get_logger(__name__)
 
@@ -10,6 +11,9 @@ logger = get_logger(__name__)
 COLUMN_MAPPING = {
     "strDocumentoIdentidad": "dni",
     "strNombres": "nombres",
+    "strApellidoPaterno": "apellido_paterno",
+    "strApellidoMaterno": "apellido_materno",
+    "strFechaNacimiento": "fecha_nacimiento",
     "strCargoEleccion": "cargo",
     "strOrganizacionPolitica": "partido",
 }
@@ -22,10 +26,13 @@ def standardize_single_file(path: str, category_name: str) -> pl.LazyFrame:
         cols = schema.names()
     except Exception as e:
         logger.warning(f"no se pudo obtener esquema de {path}: {e}")
-        # devuelve lazyframe con el esquema correcto
+        # devuelve lazyframe con el esquema correcto expandido
         return pl.DataFrame({
             "dni": pl.Series(dtype=pl.Utf8),
             "nombres": pl.Series(dtype=pl.Utf8),
+            "apellido_paterno": pl.Series(dtype=pl.Utf8),
+            "apellido_materno": pl.Series(dtype=pl.Utf8),
+            "fecha_nacimiento": pl.Series(dtype=pl.Utf8),
             "cargo": pl.Series(dtype=pl.Utf8),
             "partido": pl.Series(dtype=pl.Utf8),
             "ingresos_totales": pl.Series(dtype=pl.Float64),
@@ -40,6 +47,7 @@ def standardize_single_file(path: str, category_name: str) -> pl.LazyFrame:
     if "oIngresos" in cols:
         lf = lf.unnest("oIngresos")
         cols = lf.collect_schema().names()
+
     exprs = []
     
     # mapea los campos al esquema unificado
@@ -98,12 +106,37 @@ def run_silver_orchestration():
     silver_lf = pl.concat(lfs_to_concat, how="vertical")
     
     # limpiezas globales sobre las columnas ya estandarizadas
+    # conservamos internamente su formato limpio para armar el hash correcto
     silver_lf = silver_lf.with_columns([
         cleaners.normalize_identity("dni").alias("dni"),
-        cleaners.standardize_text("nombres", casing="title").alias("nombres"),
+        cleaners.standardize_text("nombres", casing="none").str.to_lowercase().alias("_nombres_flat"),
+        cleaners.standardize_text("apellido_paterno", casing="none").str.to_lowercase().alias("_paterno_flat"),
+        cleaners.standardize_text("apellido_materno", casing="none").str.to_lowercase().alias("_materno_flat"),
+        pl.col("fecha_nacimiento").cast(pl.Utf8).fill_null("").str.strip_chars().alias("_nacimiento_flat")
+    ])
+
+    # creamos variable temporal
+    silver_lf = silver_lf.with_columns([
+        pl.concat_str([
+            pl.col("_nombres_flat"),
+            pl.col("_paterno_flat"),
+            pl.col("_materno_flat"),
+            pl.col("_nacimiento_flat")
+        ], separator="|").alias("natural_key_composite")
+    ])
+
+    # generamos identificador global
+    logger.info("Generando generador de identidad determinista (UUID v5)...")
+    silver_lf = apply_global_id(silver_lf)
+
+    # descartamos variables auxiliares y aplicamos tipografia visual
+    silver_lf = silver_lf.with_columns([
+        pl.col("_nombres_flat").str.to_titlecase().alias("nombres"),
+        pl.col("_paterno_flat").str.to_titlecase().alias("apellido_paterno"),
+        pl.col("_materno_flat").str.to_titlecase().alias("apellido_materno"),
         cleaners.standardize_text("cargo", casing="title").alias("cargo"),
         cleaners.standardize_text("partido", casing="title").alias("partido")
-    ])
+    ]).drop(["_nombres_flat", "_paterno_flat", "_materno_flat", "_nacimiento_flat", "natural_key_composite"])
     
     # fuerza resolucion para filtrar calidad
     logger.info("Ejecutando plan y validando calidad de registros (circuit breaker)...")
@@ -113,7 +146,7 @@ def run_silver_orchestration():
     valid_df = validator.validate_silver_records(silver_df)
     
     output_path = output_dir / "candidatos_silver.parquet"
-    logger.info(f"Volcando datos limpios y filtrados a {output_path} (zstd)...")
+    logger.info(f"Volcando datos limpios y filtrados a {output_path} (zstd) con UUIDs resolutivos...")
     
     valid_df.write_parquet(
         str(output_path),
