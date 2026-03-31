@@ -1,91 +1,50 @@
 # LOGICA DEL PIPELINE - DIRECTORIO SRC/
 
 ## VISION GENERAL
+El directorio `src/` contiene toda la lógica de ingeniería de datos distribuida en módulos independientes y desacoplados. Su arquitectura modular permite que cada etapa del pipeline (Ingesta -> Normalización -> Validación) se ejecute e itere sin comprometer el resto del sistema, utilizando **Polars** como motor de procesamiento distribuido y perezoso (Lazy Evaluation).
 
-El directorio `src/` contiene todo el codigo fonte y la logica de procesamiento que hace funcionar este proyecto como una plataforma de Data Science. No es solo un repositorio de scripts sueltos, sino un sistema modular diseñado para ser escalable, mantenible y profesional.
-
-## COMPONENTES DEL PIPELINE
+## COMPONENTES Y RESPONSABILIDADES TÉCNICAS
 
 ### 1. INGESTION (src/ingestion/)
+- **Responsabilidad**: Extracción concurrente de datos de portales oficiales (JNE, Congreso).
+- **Funcionalidad**: Scrapers optimizados para navegar de forma ética y rápida, descargando miles de archivos JSON estructurados con control de semáforos para no sobrecargar los servidores gubernamentales.
+- **Artefactos**: Scripts específicos para cada portal que mantienen el rastro de la fuente original.
 
-- **Proposito**: Extraer datos de fuentes oficiales gubernamentales en Peru.
-- **Fuentes**: Scrapers exclusivos para el Jurado Nacional de Elecciones (JNE), Congreso de la Republica (legislacion en tiempo real) y el portal de Transparencia.
-- **Funcionalidad**: Manejo de peticiones HTTP, procesamiento basico de JSON y tecnicas de web scraping (BeautifulSoup, Selenium/Playwright) de forma etica y eficiente.
+### 2. NORMALIZATION (src/normalization/)
+Este módulo es el corazón del refinamiento de datos del proyecto (`Capa Silver`).
+- **orchestrator.py**: El orquestador principal que consolida todas las categorías (Presidentes, Parlamento, Senadores, Diputados) en un único Parquet unificado. Utiliza la evaluación perezosa de Polars para minimizar el consumo de RAM.
+- **cleaners.py (Motor de Limpieza)**: Conjunto de expresiones de Polars diseñadas para la normalización en tiempo de ejecución:
+    - **Limpiador Financiero**: expresiones RegEx que transforman cadenas monetarias complejas a `Float64`.
+    - **Normalizador de Identidad**: padding de DNI con ceros a la izquierda y limpieza de decimales fantasmas.
+    - **Estandarización de Texto**: eliminación de tildes, carácteres especiales, espacios múltiples y normalización tipográfica (UpperCase/TitleCase).
+- **standards.py (Global ID Engine)**: Generador de identidades deterministas mediante **UUID v5**. Utiliza un Namespace DNS fijo para asegurar que el mismo político reciba el mismo identificador único a través de todas las fases del proyecto, utilizando el DNI o una clave compuesta como semilla.
 
-### 2. STAGING (src/staging/)
+### 3. VALIDATION (src/validation/)
+Encargado de la integridad y salud del Data Lake.
+- **schemas.py (Circuit Breaker)**: Un mecanismo de seguridad diseñado para evitar que datos corruptos "ensucien" la Capa Silver.
+- **Lógica de Cortafuegos**:
+    - Registros con DNI inválido o nombres críticos nulos se desvían automáticamente a la carpeta de rechazados.
+    - Clasifica el motivo de fallo para reporte.
+    - Si el porcentaje de registros inválidos supera el umbral definido (20%), se activa el **Circuit Breaker** y se detiene la ejecución para proteger la calidad del pipeline Gold.
 
-- **Proposito**: Carga inicial desde la fuente cruda hacia la memoria operativa.
-- **Funcionalidad**: Manejo de archivos y transformacion de datos en bruto a marcos de datos (Pandas/Polars) para su posterior limpieza masiva.
+### 4. DATASETS (src/datasets/)
+- **Responsabilidad**: Gestión de la estructura final y cargadores de datos específicos.
+- **Funcionalidad**: Repositorio de modelos y esquemas que definen la salida final hacia el Backend, asegurando que los contratos de datos se cumplan.
 
-### 3. NORMALIZATION (src/normalization/)
+### 5. ANALYTICS (src/analytics/)
+- **Responsabilidad**: Generación de conocimiento derivado.
+- **Métricas operativas**: Cálculo de índices de transfuguismo, eficacia legislativa y cruces de datos para detectar inconsistencias patrimoniales.
 
-- **Proposito**: Estandarizacion profunda de datos heterogeneos.
-- **Logica**: Limpieza de nombres propio, estandarizacion de fechas ISO-8601, tipado de columnas (Enteros, Flotantes, Booleanos) y reglas de negocio transversales.
+### 6. MODELS (src/models/)
+- **Propósito**: Definición de las entidades de negocio. Es el lenguaje común del proyecto, utilizando clases de datos (DataClasses/Pydantic) para asegurar tipado fuerte en todo el flujo.
 
-### 4. ENTITY RESOLUTION (src/entity_resolution/)
+### 7. UTILS (src/utils/)
+Este directorio centraliza las funciones de apoyo transversales que no pertenecen a la lógica de negocio.
+- **logger.py**: Configuración centralizada de logs para el pipeline, permitiendo rastrear el progreso de cada lote de procesamiento.
+- **database.py**: Herramientas de conexión y gestión de persistencia SQL operando sobre la capa Gold.
 
-- **Proposito**: Vinculacion de identidades (Matching de entidades).
-- **Justificacion**: El problema real es que un candidato puede figurar con diferentes variantes de nombre o DNI en fuentes distintas.
-- **Metodologia**: Algoritmos de semejanza de cadenas (Fuzzy Matching, Levenshtein distance) para asegurar que se crea una unica identidad global por cada actor politico.
-
-### 5. VALIDATION (src/validation/)
-
-- **Proposito**: Garantizar la integridad de los datasets antes de su consumo final.
-- **Logica**: Verificacion de esquemas (Data Quality Checks), deteccion de nulos inesperados, anomalias y validacion de rangos (ej. fechas de eleccion validas).
-
-### 6. DATASETS (src/datasets/)
-
-- **Proposito**: Definicion de la estructura final de los datasets que se consumiran externamente.
-- **Funcionalidad**: Cargadores y manejadores de persistencia para las capas finales.
-
-### 7. ANALYTICS (src/analytics/)
-
-- **Proposito**: Generacion de conocimiento a partir de los datos procesados.
-- **Métricas**: Calculo de indices de cambio de partido (transfuguismo), eficacia legislativa, asistencia y antecedentes.
-
-### 8. MODELS (src/models/)
-
-Este módulo define la estructura de las entidades de negocio. Es el "lenguaje común" que utilizan todos los componentes del pipeline.
-
-**Entidades Principales**
-
-- `PartidoPolitico`: Representación de agrupaciones políticas inscritas.
-- `Candidato`: Perfiles de personas que postulan a cargos públicos.
-- `ProyectoLey`: Iniciativas legislativas rastreadas desde el Congreso.
-- `FuenteDato`: Metadatos sobre el origen y trazabilidad de cada registro.
-
-**Mejores Prácticas**
-
-- **Inmutabilidad**: Usar `dataclasses` para asegurar que los objetos de datos no cambien inesperadamente.
-- **Tipado**: Siempre definir tipos para facilitar la validación y el autocompletado en el IDE.
-- **Metadata**: Incluir campos de metadata para no perder información parcial de las fuentes crudas.
-
-### 9. UTILS (src/utils/)
-
-Este directorio centraliza las funciones de apoyo que no pertenecen a la lógica de negocio pero son necesarias para la operación técnica.
-
-**Contenido**
-
-- `logger.py`: Configuración centralizada de logs para el pipeline.
-- `database.py`: Conectores y manejo de sesiones con SQLAlchemy.
-- `helpers.py`: Funciones genéricas de manipulación de strings y fechas.
-
-**Uso del Logger**
-
-```python
-from src.utils.logger import get_logger
-
-logger = get_logger(__name__)
-logger.info("iniciando proceso de ingesta...")
-```
-
-## UTILIDADES Y CONFIGURACION
-
-- **src/utils/**: Modulos de apoyo como loggers globales, herramientas de depuracion y conectores a bases de datos (SQLAlchemy).
-- **src/config/**: Centralizacion de parametros de las fuentes, URLs oficiales y constantes del sistema para evitar hardcode.
-
-## BUENAS PRACTICAS
-
-- **Modularidad**: Cada paquete tiene una responsabilidad única segun el flujo (Ingesta -> Limpieza -> Validacion -> Analisis).
-- **Comentarios**: Codigo autodocumentado con comentarios claros en español humano.
-- **Tipado**: Uso de `pydantic` o anotaciones de tipo para robustecer el intercambio de informacion entre modulos.
+## MEJORES PRÁCTICAS Y ESTÁNDARES
+- **Desacoplamiento**: Los módulos de limpieza (`cleaners`) no dependen del orquestador, lo que permite probarlos de forma aislada.
+- **Comentarios en Español**: Todo el código está documentado siguiendo el estándar de las instrucciones del proyecto para facilitar la colaboración.
+- **Evaluación Perezosa**: Se prioriza `LazyFrame` de Polars sobre `DataFrame` en memoria para el procesamiento de miles de archivos concurrentemente.
+- **Idempotencia**: Todas las funciones de generación de identidad son puras, asegurando el mismo resultado ante la misma entrada sin importar el número de ejecuciones.

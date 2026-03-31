@@ -1,35 +1,47 @@
-# CAPA DE DATOS (DATA LAKE)
+# ESTRUCTURA DE DATOS (DATA LAKE) - CAPAS MEDALLION
 
 ## VISION GENERAL
-El directorio `data/` funciona como el motor de almacenamiento persistente del proyecto. Sigue una arquitectura de capas (basada en el modelo Medallion) para garantizar la trazabilidad total del dato, desde su captura en bruto hasta su transformacion en conocimiento curado y listo para el analisis.
+El directorio `data/` implementa una arquitectura de capas diseñada para el procesamiento masivo de datos políticos peruanos. Siguiendo el modelo **Medallion**, aseguramos que cada transformación sea rastreable, reproducible y auditable.
 
-## ESTRUCTURA DE CAPAS
+## DETALLE DE CAPAS Y RESPONSABILIDADES
 
 ### 1. RAW (data/raw/) - Capa Bronze
-- **Objetivo**: Ingesta inmutable.
-- **Descripcion**: Contiene los archivos originales tal cual se extrajeron de las fuentes gubernamentales (JNE, Congreso, etc.) en formatos como JSON, HTML o CSV.
-- **Regla de Oro**: Nunca se modifican estos archivos. Si la fuente cambia o se corrompe, esta capa permite reconstruir todo el pipeline.
+- **Propósito**: Persistencia inmutable del dato original.
+- **Estructura**: Organizado por categorías (`presidentes`, `senadores`, `parlamento_andino`, `diputados`).
+- **Contenido**: Archivos JSON individuales tal cual se descargan del Jurado Nacional de Elecciones (JNE) y otras fuentes.
+- **Regla de integridad**: Prohibido modificar archivos en esta capa. Es la única fuente de verdad para reconstruir el Data Lake desde cero.
 
 ### 2. STAGING (data/staging/)
-- **Objetivo**: Persistencia intermedia para limpieza.
-- **Descripcion**: Datos que han pasado por un proceso inicial de limpieza de ruido (tags HTML, espacios extra) pero que aun no estan normalizados.
+- **Propósito**: Almacenamiento intermedio de transición.
+- **Proceso**: Conversión de formatos heterogéneos a estructuras de datos operativas. Se utiliza para limpiezas de ruido inicial (espacios extra, carácteres de control) antes de la normalización de esquemas.
 
 ### 3. NORMALIZED (data/normalized/) - Capa Silver
-- **Objetivo**: Estandarizacion de esquemas.
-- **Descripcion**: Aqui los datos de diferentes fuentes comparten los mismos nombres de columnas, formatos de fecha (ISO-8601) y reglas de tipado. Permite que un "Nombre" en el JNE sea comparable con un "Nombre" en el Congreso.
+- **Propósito**: Refinamiento, tipado y estandarización cross-dataset.
+- **Tecnología**: Archivos unificados en formato **Parquet** con compresión **ZSTD** para optimizar el espacio en disco sin sacrificar velocidad de lectura.
+- **Procesos Críticos**:
+    - **Limpieza Financiera**: Conversión de montos (`S/ 1,200.00`, `$500`) a valores de punto flotante de 64 bits.
+    - **Normalización de Identidad**: Padding de DNI a 8 dígitos y corrección de formatos numéricos.
+    - **Global ID Engine**: Asignación de un UUID v5 persistente basado en DNI o Nombre/Fecha de nacimiento, garantizando que un político tenga el mismo ID en todas las fuentes.
+- **Destino Final**: `candidatos_silver.parquet`.
 
-### 4. MATCHING (data/matched/)
-- **Objetivo**: Resolucion de entidades.
-- **Descripcion**: Tablas que vinculan IDs de diferentes fuentes. Es el resultado del proceso de Entity Resolution, donde se determina que registros en diferentes datasets pertenecen a la misma persona fisica o partido politico.
+### 4. REJECTED (data/rejected/)
+- **Propósito**: Almacenamiento de fallos de calidad (Audit Log).
+- **Contenido**: `failed_records.parquet`.
+- **Funcionamiento**: Cuando el **Circuit Breaker** detecta un registro que no cumple los mínimos (DNI mal formado, nombres nulos, etc.), lo desvía aquí con una columna extra `motivo_rechazo`. Permite analizar por qué se está perdiendo la integridad sin detener el pipeline masivo.
 
-### 5. CURATED (data/curated/) - Capa Gold
-- **Objetivo**: Fuente unica de verdad (Single Source of Truth).
-- **Descripcion**: Datasets finales, altamente procesados y validados. Esta capa es la que consume el Backend y las herramientas de Analytics.
+### 5. MATCHING (data/matched/)
+- **Propósito**: Resolución de identidades complejas.
+- **Contenido**: Mapeos de resolución de entidades donde múltiples variantes de un nombre se unifican bajo el Global ID generado en la capa Silver.
 
-### 6. EXPORTS (data/exports/)
-- **Objetivo**: Distribucion externa.
-- **Descripcion**: Snapshots en formatos amigables (CSV, Parquet, Excel) para que analistas externos o periodistas puedan descargar los resultados sin acceder al pipeline completo.
+### 6. CURATED (data/curated/) - Capa Gold
+- **Propósito**: Analítica avanzada y consumo de API.
+- **Contenido**: Tablas finales agregadas, enriquecidas con métricas de performance política, historial de partidos y vinculaciones. Es la capa que consume directamente el Backend.
 
-## CONSIDERACIONES TECNICAS
-- **Formato**: Se prefiere el uso de Parquet para capas intermedias por su eficiencia en almacenamiento y velocidad de lectura en procesos de Data Science.
-- **Versionado**: Los datos no se suben al repositorio (ver .gitignore). Se gestionan localmente o mediante herramientas de versionado de datos en la nube.
+### 7. EXPORTS (data/exports/)
+- **Propósito**: Interoperabilidad y transparencia.
+- **Formato**: CSV y Excel para analistas de datos, periodistas y ciudadanos que no usan el pipeline de Python.
+
+## CONSIDERACIONES DE ALMACENAMIENTO
+- **Parquet**: Se utiliza exclusivamente en las capas Silver y Gold por su soporte nativo en motores de Big Data y su eficiencia columnar.
+- **ZSTD**: Algoritmo de compresión seleccionado para equilibrar el ratio de compresión (4x respecto a CSV) y la velocidad de descompresión en CPUs modernas.
+- **Exclusión**: Todos los directorios de datos están excluidos del control de versiones (`.gitignore`) para evitar el seguimiento de archivos binarios masivos y proteger datos sensibles locales.

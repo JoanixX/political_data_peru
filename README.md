@@ -18,11 +18,11 @@ Para la arquitectura usé la modular, basado en algo como las capas de datos o M
 
 ## STACK TECNICO
 
-- **Backend & Pipeline:** Python (Pandas, Polars, FastAPI).
-- **Persistencia:** PostgreSQL y Parquet (para al alta cantidad de datos).
+- **Backend & Pipeline:** Python (Polars, FastAPI).
+- **Persistencia:** PostgreSQL y Parquet (ZSTD para alta eficiencia).
 - **Frontend:** Next.js / React (para los reportes).
 - **Infraestructura:** Docker & Docker Compose.
-- **Calidad:** Great Expectations / Pytest (para la validación continua de datos).
+- **Calidad:** Logic-Based Circuit Breaker / Pytest (validación de integridad de datos).
 
 ## ESTRUCTURA DEL REPOSITORIO
 
