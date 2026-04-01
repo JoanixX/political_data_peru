@@ -19,6 +19,7 @@ Para la arquitectura usé la modular, basado en algo como las capas de datos o M
 ## STACK TECNICO
 
 - **Backend & Pipeline:** Python (Polars, FastAPI).
+- **Inteligencia Artificial:** Sentence-Transformers (MiniLM-L12-v2) & FAISS para Búsqueda Semántica Local.
 - **Persistencia:** PostgreSQL y Parquet (ZSTD para alta eficiencia).
 - **Frontend:** Next.js / React (para los reportes).
 - **Infraestructura:** Docker & Docker Compose.
