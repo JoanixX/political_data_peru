@@ -37,6 +37,10 @@ def standardize_single_file(path: str, category_name: str) -> pl.LazyFrame:
             "partido": pl.Series(dtype=pl.Utf8),
             "ingresos_totales": pl.Series(dtype=pl.Float64),
             "cantidad_bienes": pl.Series(dtype=pl.Int64),
+            "valor_total_bienes": pl.Series(dtype=pl.Float64),
+            "conteo_sentencias": pl.Series(dtype=pl.Int64),
+            "experiencia_publica_anios": pl.Series(dtype=pl.Int64),
+            "cantidad_renuncias": pl.Series(dtype=pl.Int64),
             "source_category": pl.Series(dtype=pl.Utf8)
         }).lazy()
 
@@ -69,8 +73,32 @@ def standardize_single_file(path: str, category_name: str) -> pl.LazyFrame:
     else:
         exprs.append(pl.lit(0.0).alias("ingresos_totales"))
         
-    # cantidad de bienes, por default 0 si no se profundiza más
-    exprs.append(pl.lit(0).alias("cantidad_bienes"))
+    # extracción y cálculo de métricas patrimoniales, legales y de carrera
+    bienes_inmuebles = cleaners.sum_list_field("lBienInmueble", "decValor") if "lBienInmueble" in cols else pl.lit(0.0)
+    bienes_inmuebles_autovaluo = cleaners.sum_list_field("lBienInmueble", "decAutovaluo") if "lBienInmueble" in cols else pl.lit(0.0)
+    bienes_muebles = cleaners.sum_list_field("lBienMueble", "decValor") if "lBienMueble" in cols else pl.lit(0.0)
+    
+    exprs.append(
+        pl.sum_horizontal([bienes_inmuebles, bienes_inmuebles_autovaluo, bienes_muebles])
+        .alias("valor_total_bienes")
+    )
+    
+    c_bienes_inm = cleaners.count_list_records("lBienInmueble") if "lBienInmueble" in cols else pl.lit(0)
+    c_bienes_mueb = cleaners.count_list_records("lBienMueble") if "lBienMueble" in cols else pl.lit(0)
+    exprs.append(pl.sum_horizontal([c_bienes_inm, c_bienes_mueb]).alias("cantidad_bienes"))
+    sentencias_penales = cleaners.count_list_records("lSentenciaPenal") if "lSentenciaPenal" in cols else pl.lit(0)
+    sentencias_obliga = cleaners.count_list_records("lSentenciaObliga") if "lSentenciaObliga" in cols else pl.lit(0)
+    exprs.append(pl.sum_horizontal([sentencias_penales, sentencias_obliga]).alias("conteo_sentencias"))
+    
+    if "lExperienciaLaboral" in cols:
+        exprs.append(cleaners.calculate_public_experience("lExperienciaLaboral").alias("experiencia_publica_anios"))
+    else:
+        exprs.append(pl.lit(0).alias("experiencia_publica_anios"))
+
+    if "lRenunciaOP" in cols:
+        exprs.append(cleaners.count_list_records("lRenunciaOP").alias("cantidad_renuncias"))
+    else:
+        exprs.append(pl.lit(0).alias("cantidad_renuncias"))
     exprs.append(pl.lit(category_name).alias("source_category"))
     
     return lf.select(exprs)
