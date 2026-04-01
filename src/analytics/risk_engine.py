@@ -110,6 +110,29 @@ def synthesize_itr(lf: pl.LazyFrame) -> pl.LazyFrame:
         ).round(2).alias("score_itr")
     ])
 
+def append_government_plans(lf: pl.LazyFrame, planes_path: str) -> pl.LazyFrame:
+    logger.info(f"Anexando textos de Planes de Gobierno desde {planes_path}...")
+    planes_file = Path(planes_path)
+    
+    if not planes_file.exists():
+        logger.warning(f"Archivo de planes {planes_path} no encontrado. Se llenará con contexto en blanco.")
+        return lf.with_columns(pl.lit("").alias("search_context"))
+        
+    planes_lf = pl.scan_parquet(str(planes_file))
+    
+    # suponiendo que columnas de dimensiones en el parquet de planes
+    cols_to_concat = ["dimension_social", "dimension_economica", "dimension_ambiental", "dimension_institucional"]
+    concat_expr = pl.concat_str([
+        pl.col(c).fill_null("") for c in cols_to_concat
+    ], separator=" \n ")
+    
+    planes_lf = planes_lf.with_columns(
+        concat_expr.alias("search_context")
+    ).select(["id_organizacion_politica", "search_context"])
+    
+    # left join porque no todos los candidatos tienen plan de gobierno
+    return lf.join(planes_lf, on="id_organizacion_politica", how="left")
+
 def extract_wide_table(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf.select([
         "global_id",
@@ -133,10 +156,12 @@ def extract_wide_table(lf: pl.LazyFrame) -> pl.LazyFrame:
         "score_legal",
         "score_estabilidad",
         "score_itr",
-        "risk_flags"
+        "risk_flags",
+        "search_context"
     ])
 
 def run_risk_engine(silver_path: str = "data/normalized/candidatos_silver.parquet", 
+                    planes_path: str = "data/normalized/planes_gobierno_silver.parquet",
                     gold_path: str = "data/curated/candidates_gold.parquet"):
     silver_file = Path(silver_path)
     output_file = Path(gold_path)
@@ -156,6 +181,7 @@ def run_risk_engine(silver_path: str = "data/normalized/candidatos_silver.parque
     lf = evaluate_party_stability(lf)
     lf = synthesize_itr(lf)
     lf = generate_risk_flags(lf)
+    lf = append_government_plans(lf, planes_path)
     lf = extract_wide_table(lf)
     
     logger.info("Ejecutando grafo y guardando dataset curado...")
