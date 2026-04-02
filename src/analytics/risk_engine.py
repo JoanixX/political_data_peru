@@ -1,6 +1,7 @@
 import polars as pl
 from pathlib import Path
 from src.utils.logger import get_logger
+from src.utils.audit import log_changes
 
 logger = get_logger(__name__)
 
@@ -186,7 +187,12 @@ def run_risk_engine(silver_path: str = "data/normalized/candidatos_silver.parque
     
     logger.info("Ejecutando grafo y guardando dataset curado...")
     df_gold = lf.collect()
-    
+
+    # comparamos con la version anterior del gold antes de sobreescribir
+    if output_file.exists():
+        old_gold = pl.read_parquet(str(output_file))
+        log_changes(old_gold, df_gold, key_col="global_id")
+
     df_gold.write_parquet(str(output_file), compression="zstd")
     
     logger.info(f"Risk Engine finalizado. Total registros orquestados: {len(df_gold)}")
