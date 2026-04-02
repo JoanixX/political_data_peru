@@ -61,6 +61,7 @@ Este directorio centraliza las funciones de apoyo transversales que no pertenece
 
 - **logger.py**: Configuración centralizada de logs para el pipeline, permitiendo rastrear el progreso de cada lote de procesamiento.
 - **database.py**: Herramientas de conexión y gestión de persistencia SQL operando sobre la capa Gold.
+- **audit.py**: Pipeline de auditoría de datos (Data Lineage). Compara versiones sucesivas de los datasets Silver y Gold campo a campo, detectando qué cambió en cada registro entre ejecuciones del pipeline. Los cambios se persisten en `data/curated/audit_log.parquet` con detalle de `global_id`, campo, valor anterior, valor nuevo y timestamp.
 
 ## MEJORES PRÁCTICAS Y ESTÁNDARES
 

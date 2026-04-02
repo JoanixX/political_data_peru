@@ -4,6 +4,7 @@ from src.utils.logger import get_logger
 import src.normalization.cleaners as cleaners
 from src.validation.schemas import DataFramework
 from src.normalization.standards import apply_global_id
+from src.utils.audit import log_changes
 
 logger = get_logger(__name__)
 
@@ -174,6 +175,12 @@ def run_silver_orchestration():
     valid_df = validator.validate_silver_records(silver_df)
     
     output_path = output_dir / "candidatos_silver.parquet"
+
+    # comparamos con la version anterior antes de sobreescribir
+    if output_path.exists():
+        old_silver = pl.read_parquet(str(output_path))
+        log_changes(old_silver, valid_df, key_col="global_id")
+
     logger.info(f"Volcando datos limpios y filtrados a {output_path} (zstd) con UUIDs resolutivos...")
     
     valid_df.write_parquet(
