@@ -14,7 +14,8 @@ Para la arquitectura usé la modular, basado en algo como las capas de datos o M
 
 - **Ingesta:** Extraccion inmutable de fuentes oficiales.
 - **Procesamiento:** Pipeline de limpieza, normalizacion y resolucion de identidades.
-- **Consumo:** API REST y Dashboard de visualizacion para la toma de decisiones basada en datos.
+- **Auditoría:** Sistema de seguimiento de cambios campo a campo para máxima transparencia (Data Lineage).
+- **Consumo:** API REST de alto rendimiento (FastAPI), persistencia en Parquet (Capa Gold) y Dashboard de visualizacion.
 
 ## STACK TECNICO
 

@@ -25,17 +25,20 @@ El directorio `data/` implementa una arquitectura de capas diseñada para el pro
 - **Destino Final**: `candidatos_silver.parquet`.
 
 ### 4. REJECTED (data/rejected/)
-- **Propósito**: Almacenamiento de fallos de calidad (Audit Log).
+- **Propósito**: Almacenamiento de fallos de calidad (Validation Logs).
 - **Contenido**: `failed_records.parquet`.
-- **Funcionamiento**: Cuando el **Circuit Breaker** detecta un registro que no cumple los mínimos (DNI mal formado, nombres nulos, etc.), lo desvía aquí con una columna extra `motivo_rechazo`. Permite analizar por qué se está perdiendo la integridad sin detener el pipeline masivo.
+- **Funcionamiento**: Cuando el **Circuit Breaker** detecta un registro que no cumple los mínimos (DNI mal formado, nombres nulos, etc.), lo desvía aquí con una columna extra `motivo_rechazo`. Permite analizar problemas de integridad en la ingesta sin detener el pipeline.
 
 ### 5. MATCHING (data/matched/)
 - **Propósito**: Resolución de identidades complejas.
 - **Contenido**: Mapeos de resolución de entidades donde múltiples variantes de un nombre se unifican bajo el Global ID generado en la capa Silver.
 
 ### 6. CURATED (data/curated/) - Capa Gold
-- **Propósito**: Analítica avanzada y consumo de API.
-- **Contenido**: Tablas finales agregadas, enriquecidas con métricas de performance política, historial de partidos y vinculaciones. Es la capa que consume directamente el Backend.
+- **Propósito**: Analítica avanzada, auditoría histórica y consumo de API.
+- **Contenido**: 
+    - `candidates_gold.parquet`: Tabla final agregada, enriquecida con métricas de riesgo y rendimiento político.
+    - `audit_log.parquet`: Registro histórico de cambios campo a campo detectados durante la normalización y el cálculo de riesgos.
+- **Consumo**: Es la capa que alimenta directamente el Backend API y los motores de búsqueda semántica.
 
 ### 7. EXPORTS (data/exports/)
 - **Propósito**: Interoperabilidad y transparencia.
