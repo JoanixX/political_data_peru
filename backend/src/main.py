@@ -7,6 +7,7 @@ from backend.src.repositories.parquet_repository import ParquetRepository
 from backend.src.services.candidate_service import CandidateService
 from backend.src.api.candidates import router as candidates_router
 from backend.src.api.health import router as health_router
+from backend.src.api.osce import router as osce_router
 
 logger = logging.getLogger("backend")
 logging.basicConfig(
@@ -57,6 +58,7 @@ app.add_middleware(
 
 app.include_router(candidates_router)
 app.include_router(health_router)
+app.include_router(osce_router)
 
 @app.post(
     "/v1/admin/reload",

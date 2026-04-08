@@ -26,6 +26,13 @@ class CandidateResponse(BaseModel):
     score_estabilidad: float | None = None
     score_itr: float | None = None
 
+    # vinculos con empresas sancionadas
+    osce_match_score: float | None = None
+    osce_sancionada_match: str | None = None
+    ruc_sancionado: str | None = None
+    fup_url: str | None = None  
+    osce_match_method: str | None = None
+
     # flags y contexto
     risk_flags: list[str] = Field(default_factory=list)
     search_context: str | None = None

@@ -1,5 +1,6 @@
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
+import asyncio
 
 class BaseScraper:
     def __init__(self):
@@ -21,3 +22,38 @@ class BaseScraper:
             response = await client.post(url, headers=self.headers, json=payload)
             response.raise_for_status()
             return response.json()
+
+    async def fetch_all_candidate_data(self, id_hoja_vida: int) -> dict:
+        base = "https://web.jne.gob.pe/serviciovotoinformado/api"
+        endpoints = {
+            "principal": f"{base}/hojavidavoto/hojavida-principal?IdHojaVida={id_hoja_vida}",
+            "experiencia_laboral": f"{base}/hojavidavoto/ExperienciaLaboral?IdHojaVida={id_hoja_vida}",
+            "educacion_universitaria": f"{base}/hojavidavoto/estudiosUniversitarios?IdHojaVida={id_hoja_vida}",
+            "ingresos": f"{base}/hojavidavoto/ingresosvoto?IdHojaVida={id_hoja_vida}",
+            "bienes_inmuebles": f"{base}/hojavidavoto/BienesInmuebles?IdHojaVida={id_hoja_vida}",
+            "bienes_muebles": f"{base}/hojavidavoto/BienesMueblesvoto?IdHojaVida={id_hoja_vida}",
+            "educacion_basica": f"{base}/hojavidavoto/educacionbasica?IdHojaVida={id_hoja_vida}",
+            "educacion_tecnica": f"{base}/hojavidavoto/educaciontecnica?IdHojaVida={id_hoja_vida}",
+            "posgrado": f"{base}/hojavidavoto/Posgradovoto?IdHojaVida={id_hoja_vida}",
+            "cargo_partidario": f"{base}/hojavidavoto/cargopartidario?IdHojaVida={id_hoja_vida}",
+            "info_adicional": f"{base}/hojavidavoto/Informacionadicional?IdHojaVida={id_hoja_vida}",
+            "sentencia_penal": f"{base}/hojavidavoto/sentenciapenal?IdHojaVida={id_hoja_vida}",
+            "sentencia_obliga": f"{base}/hojavidavoto/sentenciaobliga?IdHojaVida={id_hoja_vida}",
+            "anotacion_marginal": f"https://apiplataformaelectoral3.jne.gob.pe/api/v1/candidato/anotacion-marginal?IdHojaVida={id_hoja_vida}"
+        }
+ 
+        async def safe_fetch(key, url):
+            try:
+                data = await self.fetch_page(url)
+                return key, data
+            except Exception as e:
+                return key, None
+
+        tasks = [safe_fetch(k, v) for k, v in endpoints.items()]
+        results = await asyncio.gather(*tasks)
+        
+        consolidated = {}
+        for key, data in results:
+            consolidated[key] = data
+            
+        return consolidated
