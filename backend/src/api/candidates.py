@@ -15,7 +15,6 @@ def _get_service():
     from backend.src.main import candidate_service
     return candidate_service
 
-
 @router.get(
     "/candidatos",
     response_model=PaginatedResponse[CandidateResponse],
