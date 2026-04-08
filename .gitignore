@@ -96,3 +96,9 @@ reports/html/
 Instrucciones.md
 links_especificos.txt
 parlamento_json.txt
+
+# diagnostico api
+check_api.py
+check_api_deep.py
+endpoints_structure.json
+endpoints_structure_deep.json
