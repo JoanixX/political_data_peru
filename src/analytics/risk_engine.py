@@ -2,6 +2,8 @@ import polars as pl
 from pathlib import Path
 from src.utils.logger import get_logger
 from src.utils.audit import log_changes
+from src.ingestion.osce_scraper import build_fup_url
+from src.entity_resolution.matching import generate_osce_match_dictionary
 
 logger = get_logger(__name__)
 
@@ -73,30 +75,127 @@ def evaluate_party_stability(lf: pl.LazyFrame) -> pl.LazyFrame:
         pl.max_horizontal(mapped_stability, pl.lit(0.0)).alias("score_estabilidad")
     ])
 
+def evaluate_osce_risk(lf: pl.LazyFrame) -> pl.LazyFrame:
+    logger.info("Evaluando riesgo con Empresas Sancionadas por OSCE...")
+
+    schema_dict = lf.collect_schema()
+    names = schema_dict.names()
+
+    # detectar columna de empresa si existe
+    company_col = None
+    for candidate in ["titularidad", "empresa", "empresa_candidato"]:
+        if candidate in names:
+            company_col = candidate
+            break
+
+    # construir el lazyframe de candidatos para matching
+    select_cols = [pl.col("global_id")]
+    dni_col = "dni" if "dni" in names else None
+
+    if dni_col:
+        select_cols.append(pl.col(dni_col))
+
+    if company_col:
+        select_cols.append(pl.col(company_col).cast(pl.Utf8).alias("empresa_candidato"))
+
+    if not dni_col and not company_col:
+        logger.warning(
+            "No se encontró columna 'dni' ni 'empresa/titularidad'. "
+            "Omitiendo matching OSCE."
+        )
+        return lf.with_columns([
+            pl.lit(None).cast(pl.Float64).alias("osce_match_score"),
+            pl.lit(None).cast(pl.Utf8).alias("ruc_sancionado"),
+            pl.lit(None).cast(pl.Utf8).alias("fup_url"),
+            pl.lit(None).cast(pl.Utf8).alias("osce_match_method"),
+            pl.lit(None).cast(pl.Utf8).alias("osce_sancionada_match"),
+        ])
+
+    cand_lf = lf.select(select_cols)
+
+    if company_col and schema_dict[company_col].is_nested():
+        try:
+            cand_lf = cand_lf.explode("empresa_candidato")
+        except Exception:
+            pass
+
+    # ejecutar matching dual
+    match_df = generate_osce_match_dictionary(
+        cand_lf,
+        threshold=0.92,
+        dni_col=dni_col or "dni",
+        company_col="empresa_candidato" if company_col else "__absent__",
+    )
+
+    if len(match_df) == 0:
+        logger.info("No se detectaron vínculos con empresas sancionadas.")
+        return lf.with_columns([
+            pl.lit(None).cast(pl.Float64).alias("osce_match_score"),
+            pl.lit(None).cast(pl.Utf8).alias("ruc_sancionado"),
+            pl.lit(None).cast(pl.Utf8).alias("fup_url"),
+            pl.lit(None).cast(pl.Utf8).alias("osce_match_method"),
+            pl.lit(None).cast(pl.Utf8).alias("osce_sancionada_match"),
+        ])
+
+    # tomar el match con mayor score
+    best_matches = (
+        match_df.lazy()
+        .sort("osce_match_score", descending=True)
+        .group_by("global_id")
+        .first()
+        .select([
+            "global_id",
+            "osce_match_score",
+            "ruc_sancionado",
+            "fup_url",
+            "osce_match_method",
+            "osce_sancionada_match",
+        ])
+    )
+
+    return lf.join(best_matches, on="global_id", how="left")
+
 def generate_risk_flags(lf: pl.LazyFrame) -> pl.LazyFrame:
     logger.info("Anexando Risk Flags...")
-    
+
+    # flag OSCE enriquecido con el ruc para la verificación de datos fiables
+    osce_flag = (
+        pl.when(
+            (pl.col("osce_match_score") >= 0.92) & pl.col("ruc_sancionado").is_not_null()
+        )
+        .then(
+            pl.lit("Vínculo con Empresa Sancionada por OSCE (RUC: ")
+            + pl.col("ruc_sancionado")
+            + pl.lit(")")
+        )
+        .when(pl.col("osce_match_score") >= 0.92)
+        .then(pl.lit("Vínculo con Empresa Sancionada por OSCE"))
+        .otherwise(pl.lit(None))
+    )
+
     return lf.with_columns(
         pl.concat_list([
             pl.when((pl.col("ingresos_totales") == 0) & (pl.col("experiencia_publica_anios") == 0))
             .then(pl.lit("Información Financiera Insuficiente"))
             .otherwise(pl.lit(None)),
-            
+
             pl.when(pl.col("score_financiero") < 40.0)
             .then(pl.lit("Desbalance Patrimonial Detectado"))
             .otherwise(pl.lit(None)),
-            
+
             pl.when(pl.col("conteo_sentencias") == 1)
             .then(pl.lit("Antecedente Penal/Civil Registrado"))
             .otherwise(pl.lit(None)),
-            
+
             pl.when(pl.col("conteo_sentencias") > 1)
             .then(pl.lit("Múltiples Sentencias (Alto Riesgo Legal)"))
             .otherwise(pl.lit(None)),
-            
+
             pl.when(pl.col("score_estabilidad") < 50.0)
             .then(pl.lit("Alta Volatilidad Partidaria (Tránsfuga)"))
-            .otherwise(pl.lit(None))
+            .otherwise(pl.lit(None)),
+
+            osce_flag,
         ]).list.eval(pl.element().drop_nulls()).alias("risk_flags")
     )
 
@@ -144,21 +243,28 @@ def extract_wide_table(lf: pl.LazyFrame) -> pl.LazyFrame:
         "partido",
         "cargo",
         "source_category",
-        
+
         # metricas originales
         "ingresos_totales",
         "valor_total_bienes",
         "conteo_sentencias",
         "experiencia_publica_anios",
         "cantidad_renuncias",
-        
+
         # outputs del motor
         "score_financiero",
         "score_legal",
         "score_estabilidad",
         "score_itr",
         "risk_flags",
-        "search_context"
+        "search_context",
+
+        # vinculos con empresas sancionadas
+        "osce_match_score",
+        "ruc_sancionado",
+        "fup_url",
+        "osce_match_method",
+        "osce_sancionada_match",
     ])
 
 def run_risk_engine(silver_path: str = "data/normalized/candidatos_silver.parquet", 
@@ -180,6 +286,7 @@ def run_risk_engine(silver_path: str = "data/normalized/candidatos_silver.parque
     lf = evaluate_financial_risk(lf)
     lf = evaluate_legal_integrity(lf)
     lf = evaluate_party_stability(lf)
+    lf = evaluate_osce_risk(lf)
     lf = synthesize_itr(lf)
     lf = generate_risk_flags(lf)
     lf = append_government_plans(lf, planes_path)
@@ -194,7 +301,6 @@ def run_risk_engine(silver_path: str = "data/normalized/candidatos_silver.parque
         log_changes(old_gold, df_gold, key_col="global_id")
 
     df_gold.write_parquet(str(output_file), compression="zstd")
-    
     logger.info(f"Risk Engine finalizado. Total registros orquestados: {len(df_gold)}")
 
 if __name__ == "__main__":
