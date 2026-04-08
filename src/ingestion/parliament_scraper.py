@@ -11,9 +11,9 @@ class ParliamentScraper(BaseScraper):
     # y resiliencia ante fallos individuales
     def __init__(self):
         super().__init__()
-        self.list_url = "https://web.jne.gob.pe/serviciovotoinformado/api/votoinf/listarCanditatos"
-        self.consolidated_url = "https://web.jne.gob.pe/serviciovotoinformado/api/votoinf/HVConsolidado"
-        self.marginal_url = "https://apiplataformaelectoral3.jne.gob.pe/api/v1/candidato/anotacion-marginal"
+        self.list_url = "https://web.jne.gob.pe/serviciovotoinformado/api/candidatos/listarcandidatos"
+        self.consolidated_url = "https://web.jne.gob.pe/serviciovotoinformado/api/hojavidavoto/hojavida-principal"
+        self.marginal_url = "https://web.jne.gob.pe/serviciovotoinformado/api/hojavidavoto/sentenciapenal"
         self.plan_url = "https://web.jne.gob.pe/serviciovotoinformado/api/votoinf/plangobierno"
         self.output_dir = Path("data/raw/parlamento_andino")
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -29,30 +29,12 @@ class ParliamentScraper(BaseScraper):
         
         try:
             response = await self.post_data(self.list_url, payload)
+            if isinstance(response, list):
+                return response
             return response.get("data", [])
         except Exception as e:
             logger.error(f"Error crítico obteniendo lista de candidatos: {e}")
             return []
-
-    async def get_marginal_annotations(self, id_hoja_vida: int) -> list:
-        # obtiene anotaciones marginales mediante get
-        try:
-            url = f"{self.marginal_url}?IdHojaVida={id_hoja_vida}"
-            response = await self.fetch_page(url)
-            return response.get("data", [])
-        except Exception as e:
-            logger.warning(f"No se pudieron obtener anotaciones para HV {id_hoja_vida}: {e}")
-            return []
-
-    async def get_consolidated_hv(self, id_hoja_vida: int) -> dict:
-        # obtiene el hv consolidado mediante get
-        try:
-            url = f"{self.consolidated_url}?idHojaVida={id_hoja_vida}"
-            response = await self.fetch_page(url)
-            return response.get("data", {})
-        except Exception as e:
-            logger.error(f"Error al obtener HV consolidado para {id_hoja_vida}: {e}")
-            return {}
 
     async def scrape_candidate(self, candidate: dict, semaphore: asyncio.Semaphore):
         # orquesta la descarga y persistencia de un candidato individual
@@ -62,19 +44,17 @@ class ParliamentScraper(BaseScraper):
 
         async with semaphore:
             try:
-                # descargas asíncronas concurrentes por candidato
-                hv_data = await self.get_consolidated_hv(id_hv)
-                marginal_data = await self.get_marginal_annotations(id_hv)
+                # fetchea todo con el base scraper
+                consolidated = await self.fetch_all_candidate_data(id_hv)
 
                 # payload crudo
                 raw_payload = {
                     "base_info": candidate,
-                    "hv_consolidado": hv_data,
-                    "anotaciones_marginales": marginal_data
+                    "consolidated_profile": consolidated
                 }
 
-                # aqui se hace uso de la capa bronze para guardar los datos y
-                # persistirlos
+                # aqui se hace uso de la capa bronze para guardar los datos 
+                #y persistirlos
                 file_path = self.output_dir / f"{id_hv}.json"
                 with open(file_path, "w", encoding="utf-8") as f:
                     json.dump(raw_payload, f, ensure_ascii=False, indent=4)

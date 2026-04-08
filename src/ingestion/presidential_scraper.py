@@ -1,6 +1,8 @@
 import asyncio
 import json
 from pathlib import Path
+import httpx
+from tenacity import RetryError
 from src.ingestion.scrapers_base import BaseScraper
 from src.models.entities import JNEResponse
 from src.utils.logger import get_logger
@@ -10,9 +12,9 @@ logger = get_logger(__name__)
 class PresidentialScraper(BaseScraper):
     def __init__(self):
         super().__init__()
-        self.list_url = "https://web.jne.gob.pe/serviciovotoinformado/api/votoinf/listarCanditatos"
-        self.consolidated_url = "https://web.jne.gob.pe/serviciovotoinformado/api/votoinf/HVConsolidado"
-        self.extended_url = "https://web.jne.gob.pe/serviciovotoinformado/api/votoinf/hojavida"
+        self.list_url = "https://web.jne.gob.pe/serviciovotoinformado/api/candidatos/listarcandidatos"
+        self.consolidated_url = "https://web.jne.gob.pe/serviciovotoinformado/api/hojavidavoto/hojavida-principal"
+        self.extended_url = "https://web.jne.gob.pe/serviciovotoinformado/api/hojavidavoto/hojavida-principal"
         self.output_dir = Path("data/raw/presidenciales")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -27,32 +29,49 @@ class PresidentialScraper(BaseScraper):
         
         # usamos el metodo heredado post_data con reintentos
         data = await self.post_data(self.list_url, payload)
+        if isinstance(data, list):
+            return data
         return data.get("data", [])
 
     async def download_candidate_data(self, id_hoja_vida: int, semaphore: asyncio.Semaphore):
-        # descarga el consolidado y aplica fallback si es necesario
+        # descarga el consolidado
         async with semaphore:
             try:
-                # 1. Intenta el HVConsolidado
-                url = f"{self.consolidated_url}?idHojaVida={id_hoja_vida}"
-                raw_json = await self.fetch_page(url)
-                
-                # valida con el pydantic
-                validated_resp = JNEResponse(**raw_json)
-                
-                # si algo está mal o hay data vacia, se va al link extendido
-                if not validated_resp.success or not validated_resp.data:
-                    logger.warning(f"ID {id_hoja_vida} incompleto. Gatillando fallback extendido...")
-                    ext_url = f"{self.extended_url}?idHojaVida={id_hoja_vida}"
-                    extended_json = await self.fetch_page(ext_url)
-                    raw_json["extended_data_fallback"] = extended_json
+                # fetchea todo con el base scraper
+                consolidated = await self.fetch_all_candidate_data(id_hoja_vida)
+
+                # payload crudo
+                raw_payload = {
+                    "base_info": {"idHojaVida": id_hoja_vida},
+                    "consolidated_profile": consolidated
+                }
 
                 # persistencia inmutable en la capa raw (bronze)
                 file_path = self.output_dir / f"{id_hoja_vida}.json"
                 with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(raw_json, f, ensure_ascii=False, indent=4)
+                    json.dump(raw_payload, f, ensure_ascii=False, indent=4)
                 
                 return True
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    f"HTTP error con candidato {id_hoja_vida}: "
+                    f"{e.response.status_code} - {e.response.text[:200]}"
+                )
+                return False
+            
+            except RetryError as e:
+                original = e.last_attempt.exception()
+                
+                if isinstance(original, httpx.HTTPStatusError):
+                    logger.error(
+                        f"HTTP error con candidato {id_hoja_vida}: "
+                        f"{original.response.status_code} - {original.response.text[:200]}"
+                    )
+                else:
+                    logger.error(f"RetryError con candidato {id_hoja_vida}: {str(original)}")
+                
+                return False
+
             except Exception as e:
                 logger.error(f"Error con candidato {id_hoja_vida}: {str(e)}")
                 return False

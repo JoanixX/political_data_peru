@@ -12,9 +12,9 @@ logger = get_logger(__name__)
 class DeputyScraper(BaseScraper):
     def __init__(self):
         super().__init__()
-        self.list_url = "https://web.jne.gob.pe/serviciovotoinformado/api/votoinf/listarCanditatos"
-        self.consolidated_url = "https://web.jne.gob.pe/serviciovotoinformado/api/votoinf/HVConsolidado"
-        self.extended_url = "https://web.jne.gob.pe/serviciovotoinformado/api/votoinf/hojavida"
+        self.list_url = "https://web.jne.gob.pe/serviciovotoinformado/api/candidatos/listarcandidatos"
+        self.consolidated_url = "https://web.jne.gob.pe/serviciovotoinformado/api/hojavidavoto/hojavida-principal"
+        self.extended_url = "https://web.jne.gob.pe/serviciovotoinformado/api/hojavidavoto/hojavida-principal"
         self.output_dir = Path("data/raw/diputados")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -29,36 +29,34 @@ class DeputyScraper(BaseScraper):
         
         # usamos el metodo heredado post_data con reintentos
         data = await self.post_data(self.list_url, payload)
+        if isinstance(data, list):
+            return data
         return data.get("data", [])
 
     async def download_candidate_data(self, candidate, semaphore: asyncio.Semaphore):
-        dni = candidate["strDocumentoIdentidad"]
+        dni = candidate.get("strDocumentoIdentidad", "UNKNOWN")
+        id_hv = candidate.get("idHojaVida")
+        
+        if not id_hv:
+            logger.error(f"Candidato {dni} no tiene idHojaVida.")
+            return False
+
         # descarga el consolidado y aplica fallback si es necesario
         async with semaphore:
             try:
-                # 1. Intenta el HVConsolidado
-                payload = {
-                    "strDocumentoIdentidad": str(dni),
-                    "idOrganizacionPolitica": str(candidate["idOrganizacionPolitica"]),
-                    "idProcesoElectoral": 124
-                }
+                # se fetchea todo con el base scraper
+                consolidated = await self.fetch_all_candidate_data(id_hv)
 
-                raw_json = await self.post_data(self.consolidated_url, payload)
-                                
-                # valida con el pydantic
-                validated_resp = JNEResponse(**raw_json)
-                
-                # si algo está mal o hay data vacia, se va al link extendido
-                if not validated_resp.success or not validated_resp.data:
-                    logger.warning(f"ID {dni} incompleto. Gatillando fallback extendido...")
-                    ext_url = f"{self.extended_url}?strDocumentoIdentidad={dni}"
-                    extended_json = await self.fetch_page(ext_url)
-                    raw_json["extended_data_fallback"] = extended_json
+                # payload crudo
+                raw_payload = {
+                    "base_info": candidate,
+                    "consolidated_profile": consolidated
+                }
 
                 # persistencia inmutable en la capa raw (bronze)
                 file_path = self.output_dir / f"{dni}.json"
                 with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(raw_json, f, ensure_ascii=False, indent=4)
+                    json.dump(raw_payload, f, ensure_ascii=False, indent=4)
                 
                 return True
             except httpx.HTTPStatusError as e:
